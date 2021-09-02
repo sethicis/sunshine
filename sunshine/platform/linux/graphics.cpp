@@ -491,8 +491,6 @@ std::optional<rgb_t> import_source(display_t::pointer egl_display, const surface
   };
 
   if(!rgb->xrgb8) {
-    BOOST_LOG(error) << "Couldn't import RGB Image: "sv << util::hex(eglGetError()).to_string_view();
-
     return std::nullopt;
   }
 
@@ -535,8 +533,6 @@ std::optional<nv12_t> import_target(display_t::pointer egl_display, std::array<f
   };
 
   if(!nv12->r8 || !nv12->bg88) {
-    BOOST_LOG(error) << "Couldn't create KHR Image"sv;
-
     return std::nullopt;
   }
 

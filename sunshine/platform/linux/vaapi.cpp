@@ -368,6 +368,7 @@ public:
         { prime.layers[0].offset[1] } });
 
     if(!nv12_opt) {
+      BOOST_LOG(error) << "Couldn't create NV12 Image: "sv << util::hex(eglGetError()).to_string_view();
       return -1;
     }
 
@@ -424,6 +425,7 @@ public:
       auto rgb_opt = egl::import_source(display.get(), descriptor.sd);
 
       if(!rgb_opt) {
+        BOOST_LOG(error) << "Couldn't import RGB Image: "sv << util::hex(eglGetError()).to_string_view();
         return -1;
       }
 

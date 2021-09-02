@@ -158,6 +158,7 @@ public:
     auto rgb_opt = egl::import_source(egl_display.get(), current_frame->sd);
 
     if(!rgb_opt) {
+      BOOST_LOG(error) << "Couldn't import RGB Image: "sv << util::hex(eglGetError()).to_string_view();
       return platf::capture_e::reinit;
     }
 

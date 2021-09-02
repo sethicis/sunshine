@@ -523,7 +523,15 @@ int test_modifiers(card_t &card, plane_t::pointer plane) {
 
   auto status = test_modifiers(card, plane, display.get(), true);
   if(status > 0) {
-    return test_modifiers(card, plane, display.get(), false);
+    status = test_modifiers(card, plane, display.get(), false);
+
+    if(status != 0) {
+      BOOST_LOG(error) << "Couldn't import RGB Image: "sv << util::hex(eglGetError()).to_string_view();
+      return -1;
+    }
+
+
+    return 1;
   }
 
   return status;
@@ -775,6 +783,7 @@ public:
     auto rgb_opt = egl::import_source(display.get(), sd);
 
     if(!rgb_opt) {
+      BOOST_LOG(error) << "Couldn't import RGB Image: "sv << util::hex(eglGetError()).to_string_view();
       return capture_e::error;
     }
 
