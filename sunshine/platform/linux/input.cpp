@@ -40,7 +40,7 @@ KITTY_USING_MOVE_T(pollfd_t, pollfd, read_pollfd, {
   }
 });
 
-using mail_evdev_t = std::tuple<int, uinput_t::pointer, rumble_queue_t, pollfd_t>;
+using mail_evdev_t = std::tuple<int, uinput_t::pointer, rumble_cb_t, pollfd_t>;
 
 struct keycode_t {
   std::uint32_t keycode;
@@ -332,8 +332,8 @@ class effect_t {
 public:
   KITTY_DEFAULT_CONSTR_MOVE(effect_t)
 
-  effect_t(int gamepadnr, uinput_t::pointer dev, rumble_queue_t &&q)
-      : gamepadnr { gamepadnr }, dev { dev }, rumble_queue { std::move(q) }, gain { 0xFFFF }, id_to_data {} {}
+  effect_t(int gamepadnr, uinput_t::pointer dev, rumble_cb_t &&rumble_cb)
+      : gamepadnr { gamepadnr }, dev { dev }, rumble_cb { std::move(rumble_cb) }, gain { 0xFFFF }, id_to_data {} {}
 
   class data_t {
   public:
@@ -506,7 +506,7 @@ public:
   // Used as ID for adding/removinf devices from evdev notifications
   uinput_t::pointer dev;
 
-  rumble_queue_t rumble_queue;
+  rumble_cb_t rumble_cb;
 
   int gain;
 
@@ -519,18 +519,18 @@ public:
 struct rumble_ctx_t {
   std::thread rumble_thread;
 
-  safe::queue_t<mail_evdev_t> rumble_queue_queue;
+  safe::queue_t<mail_evdev_t> rumble_cb_queue;
 };
 
 void broadcastRumble(safe::queue_t<mail_evdev_t> &ctx);
 int startRumble(rumble_ctx_t &ctx) {
-  ctx.rumble_thread = std::thread { broadcastRumble, std::ref(ctx.rumble_queue_queue) };
+  ctx.rumble_thread = std::thread { broadcastRumble, std::ref(ctx.rumble_cb_queue) };
 
   return 0;
 }
 
 void stopRumble(rumble_ctx_t &ctx) {
-  ctx.rumble_queue_queue.stop();
+  ctx.rumble_cb_queue.stop();
 
   BOOST_LOG(debug) << "Waiting for Gamepad notifications to stop..."sv;
   ctx.rumble_thread.join();
@@ -579,7 +579,7 @@ public:
     }
 
     // Remove this gamepad from notifications
-    rumble_ctx->rumble_queue_queue.raise(nr, dev.get(), nullptr, pollfd_t {});
+    rumble_ctx->rumble_cb_queue.raise(nr, dev.get(), nullptr, pollfd_t {});
 
     std::stringstream ss;
 
@@ -632,7 +632,7 @@ public:
     return 0;
   }
 
-  int alloc_gamepad(int nr, rumble_queue_t &&rumble_queue) {
+  int alloc_gamepad(int nr, rumble_cb_t rumble_cb) {
     TUPLE_2D_REF(input, gamepad_state, gamepads[nr]);
 
     int err = libevdev_uinput_create_from_device(gamepad_dev.get(), LIBEVDEV_UINPUT_OPEN_MANAGED, &input);
@@ -654,10 +654,10 @@ public:
 
     auto dev_node = libevdev_uinput_get_devnode(input.get());
 
-    rumble_ctx->rumble_queue_queue.raise(
+    rumble_ctx->rumble_cb_queue.raise(
       nr,
       input.get(),
-      std::move(rumble_queue),
+      std::move(rumble_cb),
       pollfd_t {
         dup(libevdev_uinput_get_fd(input.get())),
         (std::int16_t)POLLIN,
@@ -883,7 +883,7 @@ void broadcastRumble(safe::queue_t<mail_evdev_t> &rumble_queue_queue) {
         if(old_weak != weak || old_strong != strong) {
           BOOST_LOG(debug) << "Sending haptic feedback: lowfreq [0x"sv << util::hex(weak).to_string_view() << "]: highfreq [0x"sv << util::hex(strong).to_string_view() << ']';
 
-          effect.rumble_queue->raise(effect.gamepadnr, weak, strong);
+          effect.rumble_cb(effect.gamepadnr, weak, strong);
         }
       }
     }
@@ -985,8 +985,8 @@ void keyboard(input_t &input, uint16_t modcode, bool release) {
   keycode.pressed = 1;
 }
 
-int alloc_gamepad(input_t &input, int nr, rumble_queue_t &&rumble_queue) {
-  return ((input_raw_t *)input.get())->alloc_gamepad(nr, std::move(rumble_queue));
+int alloc_gamepad(input_t &input, int nr, const rumble_cb_t &rumble_cb) {
+  return ((input_raw_t *)input.get())->alloc_gamepad(nr, rumble_cb);
 }
 
 void free_gamepad(input_t &input, int nr) {

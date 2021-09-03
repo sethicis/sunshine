@@ -778,7 +778,7 @@ void controlBroadcastThread(control_server_t *server) {
       break;
     }
 
-    server->iterate(1s);
+    server->iterate(500ms);
   }
 
   // Let all remaining connections know the server is shutting down
