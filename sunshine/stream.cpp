@@ -175,7 +175,7 @@ public:
   int bind(std::uint16_t port) {
     _host = net::host_create(_addr, config::stream.channels, port);
 
-    return !(bool)_host;
+    return !(bool)_host.raw;
   }
 
   void emplace_addr_to_session(const std::string &addr, session_t &session) {
@@ -204,6 +204,8 @@ public:
 
   int send(const std::string_view &payload, net::peer_t peer) {
     auto packet = enet_packet_create(payload.data(), payload.size(), ENET_PACKET_FLAG_RELIABLE);
+
+    auto lg = _host.lock();
     if(enet_peer_send(peer, 0, packet)) {
       enet_packet_destroy(packet);
 
@@ -214,7 +216,8 @@ public:
   }
 
   void flush() {
-    enet_host_flush(_host.get());
+    auto lg = _host.lock();
+    enet_host_flush(_host->get());
   }
 
   // Callbacks
@@ -224,7 +227,7 @@ public:
   util::sync_t<std::unordered_multimap<std::string, std::pair<std::uint16_t, session_t *>>> _map_addr_session;
 
   ENetAddress _addr;
-  net::host_t _host;
+  util::sync_t<net::host_t> _host;
 };
 
 struct broadcast_ctx_t {
@@ -291,8 +294,6 @@ struct session_t {
 
     net::peer_t peer;
     std::uint8_t seq;
-
-    platf::rumble_queue_t rumble_queue;
   } control;
 
   safe::mail_raw_t::event_t<bool> shutdown_event;
@@ -392,12 +393,27 @@ void control_server_t::call(std::uint16_t type, session_t *session, const std::s
 
 void control_server_t::iterate(std::chrono::milliseconds timeout) {
   ENetEvent event;
-  auto res = enet_host_service(_host.get(), &event, timeout.count());
+
+  int res;
+  {
+    auto lock = _host.lock();
+
+    res = enet_host_service(_host->get(), &event, 0);
+  }
+
+  if(res < 0) {
+    BOOST_LOG(error) << "Failed to retrieve Broadcast control packets"sv;
+    mail::man->event<bool>(mail::broadcast_shutdown)->raise(true);
+
+    return;
+  }
 
   if(res > 0) {
     auto session = get_session(event.peer);
     if(!session) {
       BOOST_LOG(warning) << "Rejected connection from ["sv << platf::from_sockaddr((sockaddr *)&event.peer->address.address) << "]: it's not properly set up"sv;
+
+      auto lg = _host.lock();
       enet_peer_disconnect_now(event.peer, 0);
 
       return;
@@ -427,6 +443,12 @@ void control_server_t::iterate(std::chrono::milliseconds timeout) {
     case ENET_EVENT_TYPE_NONE:
       break;
     }
+  }
+  else {
+    std::uint32_t condition = ENET_SOCKET_WAIT_RECEIVE;
+
+    // Wait until timeout or until the socket can be read from
+    enet_socket_wait(_host.raw->socket, &condition, timeout.count());
   }
 }
 
@@ -746,13 +768,6 @@ void controlBroadcastThread(control_server_t *server) {
           continue;
         }
 
-        auto &rumble_queue = session->control.rumble_queue;
-        while(rumble_queue->peek()) {
-          auto rumble = rumble_queue->pop();
-
-          send_rumble(session, rumble->id, rumble->lowfreq, rumble->highfreq);
-        }
-
         ++pos;
       })
     }
@@ -763,7 +778,7 @@ void controlBroadcastThread(control_server_t *server) {
       break;
     }
 
-    server->iterate(50ms);
+    server->iterate(1s);
   }
 
   // Let all remaining connections know the server is shutting down
@@ -1360,12 +1375,16 @@ void join(session_t &session) {
 }
 
 int start(session_t &session, const std::string &addr_string) {
-  session.input = input::alloc(session.mail);
-
   session.broadcast_ref = broadcast.ref();
   if(!session.broadcast_ref) {
     return -1;
   }
+
+  session.input = input::alloc(session.mail, [&session](std::uint16_t id, std::uint16_t lowfreq, std::uint16_t highfreq) {
+    send_rumble(&session, id, lowfreq, highfreq);
+
+    session.broadcast_ref->control_server.flush();
+  });
 
   session.broadcast_ref->control_server.emplace_addr_to_session(addr_string, session);
 
@@ -1406,9 +1425,8 @@ std::shared_ptr<session_t> alloc(config_t &config, crypto::aes_t &gcm_key, crypt
 
   session->config = config;
 
-  session->control.rumble_queue = mail->queue<platf::rumble_t>(mail::rumble);
-  session->control.iv           = iv;
-  session->control.cipher       = crypto::cipher::gcm_t {
+  session->control.iv     = iv;
+  session->control.cipher = crypto::cipher::gcm_t {
     gcm_key, false
   };
 

@@ -49,7 +49,6 @@ MAIL(switch_display);
 // Local mail
 MAIL(touch_port);
 MAIL(idr);
-MAIL(rumble);
 #undef MAIL
 } // namespace mail
 

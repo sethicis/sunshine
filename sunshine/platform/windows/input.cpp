@@ -63,8 +63,8 @@ public:
     return 0;
   }
 
-  int alloc_gamepad_interal(int nr, rumble_queue_t &rumble_queue, VIGEM_TARGET_TYPE gp_type) {
-    auto &[rumble, gp] = gamepads[nr];
+  int alloc_gamepad_interal(int nr, const rumble_cb_t &_rumble_cb, VIGEM_TARGET_TYPE gp_type) {
+    auto &[rumble_cb, gp] = gamepads[nr];
     assert(!gp);
 
     if(gp_type == Xbox360Wired) {
@@ -81,7 +81,7 @@ public:
       return -1;
     }
 
-    rumble = std::move(rumble_queue);
+    rumble_cb = _rumble_cb;
 
     if(gp_type == Xbox360Wired) {
       status = vigem_target_x360_register_notification(client.get(), gp.get(), x360_notify, this);
@@ -112,10 +112,10 @@ public:
 
   void rumble(target_t::pointer target, std::uint8_t smallMotor, std::uint8_t largeMotor) {
     for(int x = 0; x < gamepads.size(); ++x) {
-      auto &[rumble_queue, gp] = gamepads[x];
+      auto &[rumble_cb, gp] = gamepads[x];
 
       if(gp.get() == target) {
-        rumble_queue->raise(x, ((std::uint16_t)smallMotor) << 8, ((std::uint16_t)largeMotor) << 8);
+        rumble_cb(x, ((std::uint16_t)smallMotor) << 8, ((std::uint16_t)largeMotor) << 8);
 
         return;
       }
@@ -137,7 +137,7 @@ public:
     }
   }
 
-  std::vector<std::pair<rumble_queue_t, target_t>> gamepads;
+  std::vector<std::pair<rumble_cb_t, target_t>> gamepads;
 
   client_t client;
 };
@@ -326,12 +326,12 @@ void keyboard(input_t &input, uint16_t modcode, bool release) {
   send_input(i);
 }
 
-int alloc_gamepad(input_t &input, int nr, rumble_queue_t &&rumble_queue) {
+int alloc_gamepad(input_t &input, int nr, const rumble_cb_t &rumble_cb) {
   if(!input) {
     return 0;
   }
 
-  return ((vigem_t *)input.get())->alloc_gamepad_interal(nr, rumble_queue, map(config::input.gamepad));
+  return ((vigem_t *)input.get())->alloc_gamepad_interal(nr, rumble_cb, map(config::input.gamepad));
 }
 
 void free_gamepad(input_t &input, int nr) {

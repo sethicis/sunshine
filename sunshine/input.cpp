@@ -105,12 +105,12 @@ struct input_t {
 
   input_t(
     safe::mail_raw_t::event_t<input::touch_port_t> touch_port_event,
-    platf::rumble_queue_t rumble_queue)
+    platf::rumble_cb_t &&rumble_cb)
       : shortcutFlags {},
         active_gamepad_state {},
         gamepads(MAX_GAMEPADS),
         touch_port_event { std::move(touch_port_event) },
-        rumble_queue { std::move(rumble_queue) },
+        rumble_cb { std::move(rumble_cb) },
         mouse_left_button_timeout {},
         touch_port { 0, 0, 0, 0, 0, 0, 1.0f } {}
 
@@ -121,7 +121,7 @@ struct input_t {
   std::vector<gamepad_t> gamepads;
 
   safe::mail_raw_t::event_t<input::touch_port_t> touch_port_event;
-  platf::rumble_queue_t rumble_queue;
+  platf::rumble_cb_t rumble_cb;
 
   util::ThreadPool::task_id_t mouse_left_button_timeout;
 
@@ -460,7 +460,7 @@ void passthrough(PNV_SCROLL_PACKET packet) {
   platf::scroll(platf_input, util::endian::big(packet->scrollAmt1));
 }
 
-int updateGamepads(std::vector<gamepad_t> &gamepads, std::int16_t old_state, std::int16_t new_state, platf::rumble_queue_t rumble_queue) {
+int updateGamepads(std::vector<gamepad_t> &gamepads, std::int16_t old_state, std::int16_t new_state, const platf::rumble_cb_t &rumble_cb) {
   auto xorGamepadMask = old_state ^ new_state;
   if(!xorGamepadMask) {
     return 0;
@@ -486,7 +486,7 @@ int updateGamepads(std::vector<gamepad_t> &gamepads, std::int16_t old_state, std
           return -1;
         }
 
-        if(platf::alloc_gamepad(platf_input, id, std::move(rumble_queue))) {
+        if(platf::alloc_gamepad(platf_input, id, rumble_cb)) {
           free_id(gamepadMask, id);
           // allocating a gamepad failed: solution: ignore gamepads
           // The implementations of platf::alloc_gamepad already has logging
@@ -502,7 +502,7 @@ int updateGamepads(std::vector<gamepad_t> &gamepads, std::int16_t old_state, std
 }
 
 void passthrough(std::shared_ptr<input_t> &input, PNV_MULTI_CONTROLLER_PACKET packet) {
-  if(updateGamepads(input->gamepads, input->active_gamepad_state, packet->activeGamepadMask, input->rumble_queue)) {
+  if(updateGamepads(input->gamepads, input->active_gamepad_state, packet->activeGamepadMask, input->rumble_cb)) {
     return;
   }
 
@@ -668,10 +668,9 @@ public:
   return std::make_unique<deinit_t>();
 }
 
-std::shared_ptr<input_t> alloc(safe::mail_t mail) {
+std::shared_ptr<input_t> alloc(safe::mail_t mail, platf::rumble_cb_t &&rumble_cb) {
   auto input = std::make_shared<input_t>(
-    mail->event<input::touch_port_t>(mail::touch_port),
-    mail->queue<platf::rumble_t>(mail::rumble));
+    mail->event<input::touch_port_t>(mail::touch_port), std::move(rumble_cb));
 
   // Workaround to ensure new frames will be captured when a client connects
   task_pool.pushDelayed([]() {

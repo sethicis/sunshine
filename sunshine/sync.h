@@ -6,6 +6,7 @@
 #define SUNSHINE_SYNC_H
 
 #include <array>
+#include <memory>
 #include <mutex>
 #include <utility>
 
@@ -72,7 +73,7 @@ public:
   }
 
   value_t *operator->() {
-    return &raw;
+    return std::addressof(raw);
   }
 
   value_t &operator*() {

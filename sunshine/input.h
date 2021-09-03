@@ -20,7 +20,7 @@ void passthrough(std::shared_ptr<input_t> &input, std::vector<std::uint8_t> &&in
 
 [[nodiscard]] std::unique_ptr<platf::deinit_t> init();
 
-std::shared_ptr<input_t> alloc(safe::mail_t mail);
+std::shared_ptr<input_t> alloc(safe::mail_t mail, platf::rumble_cb_t &&rumble_cb);
 
 struct touch_port_t : public platf::touch_port_t {
   int env_width, env_height;
