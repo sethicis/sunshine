@@ -269,7 +269,7 @@ std::optional<proc::proc_t> parse(const std::string &file_name) {
     for(auto &[name, val] : env_vars) {
       this_env[name] = parse_env_val(this_env, val.get_value<std::string>());
     }
-
+    std::map<std::size_t, bool> hash_id_validator;
     std::vector<proc::ctx_t> apps;
     for(auto &[_, app_node] : apps_node) {
       proc::ctx_t ctx;
@@ -329,6 +329,13 @@ std::optional<proc::proc_t> parse(const std::string &file_name) {
       ctx.name      = std::move(name);
       ctx.prep_cmds = std::move(prep_cmds);
       ctx.detached  = std::move(detached);
+
+      if (hash_id_validator.find(ctx.id()) != std::end(hash_id_validator)) {
+        BOOST_LOG(error) << "Duplicate app name to box_art_path detected: (" << ctx.name << ", " << ctx.box_art_path << ").  Make sure app name to box art path is unique and try again.";
+        exit(1);
+      } else {
+        hash_id_validator.insert(std::make_pair(ctx.id(), true));
+      }
 
       apps.emplace_back(std::move(ctx));
     }

@@ -11,6 +11,10 @@
 #include <variant>
 #include <vector>
 
+#include <boost/beast/core/detail/base64.hpp>
+
+namespace b64 = boost::beast::detail::base64;
+
 #define KITTY_WHILE_LOOP(x, y, z) \
   {                               \
     x;                            \
@@ -921,5 +925,21 @@ inline auto little(T x) { return endian_helper<T>::little(x); }
 template<class T>
 inline auto big(T x) { return endian_helper<T>::big(x); }
 } // namespace endian
+
+
+inline std::vector<std::byte> decode_base64_image(std::string const& base64_img) {
+  std::vector<std::byte> image_bytes;
+  
+  image_bytes.resize(b64::decoded_size(base64_img.size()));
+  auto const result = b64::decode(
+    &image_bytes[0],
+    base64_img.data(),
+    base64_img.size()
+  );
+
+  image_bytes.resize(result.first);
+
+  return image_bytes;
+}
 } // namespace util
 #endif

@@ -57,6 +57,9 @@ struct ctx_t {
   std::string working_dir;
   std::string output;
   std::string box_art_path;
+  std::size_t id() {
+    return std::hash<std::string>{}(name + '-' + box_art_path);
+  };
 };
 
 class proc_t {

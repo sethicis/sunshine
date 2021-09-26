@@ -64,6 +64,35 @@ void print_req(const req_https_t &request) {
   BOOST_LOG(debug) << " [--] "sv;
 }
 
+std::optional<std::string> update_box_art_cache(std::string base64_box_art, std::string box_art_path) {
+  if (box_art_path != "") {
+    // Make sure the existing box are is in the cache directory before deleting it.
+    if (fs::exists(std::string(BOX_ART_CACHE_DIR).append("/"s).append(fs::path(box_art_path).filename()))) {
+      BOOST_LOG(debug) << "Deleting box art at: " << box_art_path;
+      fs::remove(box_art_path);
+    }
+    else {
+      BOOST_LOG(info) << "Skipped deletion of box art (" << box_art_path << ") file not found in cache directory.";
+    }
+  }
+
+  // TODO: Update the logic to work with new box_art_path pattern
+
+  if (base64_box_art != "") {
+    BOOST_LOG(verbose) << "Decoding base64 box art:" << std::endl << base64_box_art << std::endl;
+    auto image_bytes = util::decode_base64_image(base64_box_art);
+    auto box_art_filename = util::uuid_t::generate().string();
+    box_art_path = BOX_ART_CACHE_DIR + "/"s + box_art_filename;
+    BOOST_LOG(debug) << "Writing box art image to cache at path: " << box_art_path;
+    std::ofstream box_art_file(box_art_path, std::ios::out | std::ios::binary);
+    box_art_file.write(reinterpret_cast<const char *>(image_bytes.data()), image_bytes.size());
+
+    return box_art_path;
+  }
+
+  return std::nullopt;
+}
+
 void send_unauthorized(resp_https_t response, req_https_t request) {
   auto address = request->remote_endpoint_address();
   BOOST_LOG(info) << "Web UI: ["sv << address << "] -- not authorized"sv;
@@ -239,6 +268,27 @@ void getVueJs(resp_https_t response, req_https_t request) {
   print_req(request);
 
   std::string content = read_file(WEB_DIR "third_party/vue.js");
+  response->write(content);
+}
+
+void getCropperCss(resp_https_t response, req_https_t request) {
+  print_req(request);
+
+  std::string content = read_file(WEB_DIR "third_party/cropper.min.css");
+  response->write(content);
+}
+
+void getCropperJs(resp_https_t response, req_https_t request) {
+  print_req(request);
+
+  std::string content = read_file(WEB_DIR "third_party/cropper.min.js");
+  response->write(content);
+}
+
+void getVueCropperJs(resp_https_t response, req_https_t request) {
+  print_req(request);
+
+  std::string content = read_file(WEB_DIR "third_party/VueCropper.js");
   response->write(content);
 }
 
@@ -575,6 +625,9 @@ void start() {
   server.resource["^/third_party/bootstrap.min.css$"]["GET"]       = getBootstrapCss;
   server.resource["^/third_party/bootstrap.bundle.min.js$"]["GET"] = getBootstrapJs;
   server.resource["^/third_party/vue.js$"]["GET"]                  = getVueJs;
+  server.resource["^/third_party/cropper.min.css$"]["GET"]         = getCropperCss;
+  server.resource["^/third_party/cropper.min.js$"]["GET"]          = getCropperJs;
+  server.resource["^/third_party/VueCropper.js"]["GET"]            = getVueCropperJs;
   server.config.reuse_address                                      = true;
   server.config.address                                            = "0.0.0.0"s;
   server.config.port                                               = port_https;

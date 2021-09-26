@@ -11,6 +11,7 @@
 #include "thread_safe.h"
 
 #define WEB_DIR SUNSHINE_ASSETS_DIR "/web/"
+#define BOX_ART_CACHE_DIR (SUNSHINE_ASSETS_DIR "/box_art_cache")
 
 
 namespace confighttp {
